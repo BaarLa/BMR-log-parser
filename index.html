@@ -1,28 +1,82 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <title>Battle Mages Chat Parser</title>
-    <link rel="stylesheet" href="style.css">
+<meta charset="UTF-8">
+<title>Battle Mages Log Parser</title>
+<style>
+body { font-family: Arial, sans-serif; margin: 20px; }
+textarea { width: 100%; height: 200px; }
+input { width: 200px; margin-right: 10px; }
+button { margin-top: 10px; }
+#output { white-space: pre-line; margin-top: 20px; background: #f4f4f4; padding: 10px; border: 1px solid #ccc; }
+</style>
 </head>
 <body>
-    <header>
-        <h1>Battle Mages Chat Parser</h1>
-    </header>
 
-    <main>
-        <p>Paste your game's HTML code below:</p>
-        <textarea id="htmlInput" placeholder="Paste HTML here..." rows="15"></textarea>
-        <div class="players">
-            <label>First player name (curious): <input id="player1" value="Calypso"></label>
-            <label>Second player name (cunning): <input id="player2" value="Elyssa"></label>
-        </div>
-        <button id="parseBtn">Parse Logs</button>
+<h2>Battle Mages Log Parser</h2>
 
-        <h2>Result:</h2>
-        <div id="chatOutput" class="chat-output"></div>
-    </main>
+<label>Player 1 Name: <input type="text" id="player1" value="Calypso"></label>
+<label>Player 2 Name: <input type="text" id="player2" value="Elyssa"></label>
 
-    <script src="script.js"></script>
+<br><br>
+<textarea id="htmlInput" placeholder="Paste your HTML code here"></textarea>
+<br>
+<button onclick="parseLogs()">Parse Logs</button>
+
+<div id="output"></div>
+
+<script>
+function parseLogs() {
+    const html = document.getElementById('htmlInput').value;
+    const parser = new DOMParser();
+    const doc = parser.parseFromString(html, 'text/html');
+    
+    const player1 = document.getElementById('player1').value.trim() || 'Player1';
+    const player2 = document.getElementById('player2').value.trim() || 'Player2';
+    
+    const mapping = {}; // class -> player
+    const dialogueBoxes = doc.querySelectorAll('#dialog .dialog_box');
+    
+    if(dialogueBoxes.length >= 2) {
+        const firstBox = dialogueBoxes[0];
+        const secondBox = dialogueBoxes[1];
+        
+        // map classes to players dynamically
+        firstBox.querySelectorAll('.curious, .cunning').forEach(el => mapping[el.className.split(' ')[0]] = player1);
+        secondBox.querySelectorAll('.curious, .cunning').forEach(el => mapping[el.className.split(' ')[0]] = player2);
+    }
+    
+    let messages = [];
+    
+    // Process each dialogue box
+    dialogueBoxes.forEach(box => {
+        // Logs
+        box.querySelectorAll('.log, .curious, .cunning').forEach(div => {
+            const span = div.querySelector('.content') || div;
+            const timestampEl = div.querySelector('.timestamp');
+            const timestamp = timestampEl ? timestampEl.textContent.trim() : '';
+            const content = span.textContent.replace(/\s+/g, ' ').trim();
+            
+            // Determine author
+            let cls = Array.from(div.classList).find(c => mapping[c]);
+            let author = cls ? mapping[cls] : 'System';
+            
+            messages.push({time: timestamp, author, content});
+        });
+    });
+    
+    // Sort by time
+    messages.sort((a,b) => {
+        if(!a.time) return 1;
+        if(!b.time) return -1;
+        return a.time.localeCompare(b.time);
+    });
+    
+    // Render
+    const output = messages.map(m => `${m.author}: ${m.time}${m.content}`).join('\n');
+    document.getElementById('output').textContent = output;
+}
+</script>
+
 </body>
 </html>
