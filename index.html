@@ -1,82 +1,78 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="UTF-8">
-<title>Battle Mages Log Parser</title>
-<style>
-body { font-family: Arial, sans-serif; margin: 20px; }
-textarea { width: 100%; height: 200px; }
-input { width: 200px; margin-right: 10px; }
-button { margin-top: 10px; }
-#output { white-space: pre-line; margin-top: 20px; background: #f4f4f4; padding: 10px; border: 1px solid #ccc; }
-</style>
+    <meta charset="UTF-8">
+    <title>Battle Mages Log Parser</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; }
+        h1 { font-size: 24px; }
+        input { margin: 5px 0; }
+        textarea { width: 100%; height: 300px; margin-top: 10px; }
+        button { margin-top: 10px; padding: 5px 10px; }
+        .log-output { white-space: pre-wrap; background: #f0f0f0; padding: 10px; margin-top: 10px; border: 1px solid #ccc; }
+    </style>
 </head>
 <body>
+    <h1>Battle Mages Log Parser</h1>
 
-<h2>Battle Mages Log Parser</h2>
+    <label>First player name: <input type="text" id="player1" value="Calypso"></label><br>
+    <label>Second player name: <input type="text" id="player2" value="Elyssa"></label><br>
+    <label>Paste HTML content here:</label><br>
+    <textarea id="htmlInput"></textarea><br>
+    <button id="parseBtn">Parse Logs</button>
 
-<label>Player 1 Name: <input type="text" id="player1" value="Calypso"></label>
-<label>Player 2 Name: <input type="text" id="player2" value="Elyssa"></label>
-
-<br><br>
-<textarea id="htmlInput" placeholder="Paste your HTML code here"></textarea>
-<br>
-<button onclick="parseLogs()">Parse Logs</button>
-
-<div id="output"></div>
+    <h2>Parsed Output:</h2>
+    <div class="log-output" id="output"></div>
 
 <script>
-function parseLogs() {
+document.getElementById('parseBtn').addEventListener('click', () => {
     const html = document.getElementById('htmlInput').value;
     const parser = new DOMParser();
     const doc = parser.parseFromString(html, 'text/html');
-    
-    const player1 = document.getElementById('player1').value.trim() || 'Player1';
-    const player2 = document.getElementById('player2').value.trim() || 'Player2';
-    
-    const mapping = {}; // class -> player
-    const dialogueBoxes = doc.querySelectorAll('#dialog .dialog_box');
-    
-    if(dialogueBoxes.length >= 2) {
-        const firstBox = dialogueBoxes[0];
-        const secondBox = dialogueBoxes[1];
-        
-        // map classes to players dynamically
-        firstBox.querySelectorAll('.curious, .cunning').forEach(el => mapping[el.className.split(' ')[0]] = player1);
-        secondBox.querySelectorAll('.curious, .cunning').forEach(el => mapping[el.className.split(' ')[0]] = player2);
-    }
-    
-    let messages = [];
-    
-    // Process each dialogue box
-    dialogueBoxes.forEach(box => {
-        // Logs
-        box.querySelectorAll('.log, .curious, .cunning').forEach(div => {
-            const span = div.querySelector('.content') || div;
-            const timestampEl = div.querySelector('.timestamp');
-            const timestamp = timestampEl ? timestampEl.textContent.trim() : '';
-            const content = span.textContent.replace(/\s+/g, ' ').trim();
-            
-            // Determine author
-            let cls = Array.from(div.classList).find(c => mapping[c]);
-            let author = cls ? mapping[cls] : 'System';
-            
-            messages.push({time: timestamp, author, content});
+
+    const player1 = document.getElementById('player1').value || 'Player1';
+    const player2 = document.getElementById('player2').value || 'Player2';
+    const players = [player1, player2];
+
+    const logs = [];
+
+    doc.querySelectorAll('#dialog .dialog_box').forEach((dialogBox, idx) => {
+        const charName = players[idx % players.length];
+
+        dialogBox.querySelectorAll('.log, .content.format').forEach(div => {
+            const timestamp = div.querySelector('.timestamp')?.textContent || '';
+            const parts = Array.from(div.childNodes).map(node => {
+                if (node.nodeType === Node.TEXT_NODE) {
+                    const text = node.textContent.trim();
+                    if (!text) return null;
+                    return { type: 'IC', text };
+                } else if (node.classList) {
+                    if (node.classList.contains('ooc')) return { type: 'OOC', text: node.textContent.trim() };
+                    if (node.classList.contains('emote')) return { type: 'EMOTE', text: node.textContent.trim() };
+                    return { type: 'IC', text: node.textContent.trim() };
+                } else {
+                    return { type: 'IC', text: node.textContent.trim() };
+                }
+            }).filter(Boolean);
+
+            parts.forEach(p => logs.push({
+                timestamp,
+                character: charName,
+                type: p.type,
+                text: p.text
+            }));
         });
     });
-    
-    // Sort by time
-    messages.sort((a,b) => {
-        if(!a.time) return 1;
-        if(!b.time) return -1;
-        return a.time.localeCompare(b.time);
-    });
-    
-    // Render
-    const output = messages.map(m => `${m.author}: ${m.time}${m.content}`).join('\n');
-    document.getElementById('output').textContent = output;
-}
-</script>
 
+    logs.sort((a, b) => {
+        if (!a.timestamp) return 1;
+        if (!b.timestamp) return -1;
+        return a.timestamp.localeCompare(b.timestamp);
+    });
+
+    const outputLines = logs.map(log => `${log.character} [${log.type}] ${log.timestamp} ${log.text}`);
+    document.getElementById('output').textContent = outputLines.join('\n');
+});
+</script>
 </body>
 </html>
