@@ -1,31 +1,49 @@
-document.getElementById("parseBtn").addEventListener("click", () => {
-    const html = document.getElementById("htmlInput").value;
-    const player1 = document.getElementById("player1").value;
-    const player2 = document.getElementById("player2").value;
+// HTML should have two input fields with IDs 'player1_name' and 'player2_name' and a button to trigger parsing
 
-    const parser = new DOMParser();
-    const doc = parser.parseFromString(html, "text/html");
+function parseLogs() {
+    const player1 = document.getElementById('player1_name').value.trim() || 'Player 1';
+    const player2 = document.getElementById('player2_name').value.trim() || 'Player 2';
 
-    const chatOutput = document.getElementById("chatOutput");
-    chatOutput.innerHTML = "";
+    let messages = [];
 
-    // Get all dialogue blocks and combat logs
-    const dialogues = doc.querySelectorAll("#dialog .dialog_box, #combat_log li");
-    
-    dialogues.forEach(item => {
-        let player = item.classList.contains("curious") ? player1 :
-                     item.classList.contains("cunning") ? player2 : "System";
+    document.querySelectorAll('.dialog_box').forEach((box, boxIndex) => {
+        box.querySelectorAll('div > span.timestamp').forEach(ts => {
+            const contentEl = ts.parentElement.querySelector('.content');
+            if (!contentEl) return;
 
-        let content = item.textContent.trim();
+            let charClass = boxIndex === 0 ? player1 : player2;
+            let text = contentEl.innerText.trim();
 
-        // Determine type: OOC, Emote, or regular IC
-        let type = "ic";
-        if (item.querySelector(".ooc") || content.startsWith("Yay, victory")) type = "ooc";
-        if (item.querySelector(".emote")) type = "emote";
+            // Determine type
+            let type = 'IC';
+            if (contentEl.classList.contains('ooc') || /OOC/i.test(text)) type = 'OOC';
+            else if (contentEl.classList.contains('emote') || /\/me/.test(text)) type = 'EMOTE';
 
-        const div = document.createElement("div");
-        div.className = type;
-        div.innerHTML = `<strong>${player}:</strong> ${content}`;
-        chatOutput.appendChild(div);
+            messages.push({
+                time: ts.textContent.trim(),
+                character: charClass,
+                content: text,
+                type: type
+            });
+        });
     });
-});
+
+    // Sort messages by time
+    messages.sort((a, b) => {
+        let tA = a.time.split(':').map(Number);
+        let tB = b.time.split(':').map(Number);
+        let secondsA = tA[0]*3600 + tA[1]*60 + tA[2];
+        let secondsB = tB[0]*3600 + tB[1]*60 + tB[2];
+        return secondsA - secondsB;
+    });
+
+    // Output results
+    const output = document.getElementById('output');
+    output.innerHTML = '';
+    messages.forEach(msg => {
+        let prefix = msg.type === 'IC' ? '' : msg.type + ': ';
+        let div = document.createElement('div');
+        div.textContent = `${msg.character}: ${msg.time} ${prefix}${msg.content}`;
+        output.appendChild(div);
+    });
+}
