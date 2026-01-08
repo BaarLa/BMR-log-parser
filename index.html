@@ -1,78 +1,102 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <title>Battle Mages Log Parser</title>
-    <style>
-        body { font-family: Arial, sans-serif; margin: 20px; }
-        h1 { font-size: 24px; }
-        input { margin: 5px 0; }
-        textarea { width: 100%; height: 300px; margin-top: 10px; }
-        button { margin-top: 10px; padding: 5px 10px; }
-        .log-output { white-space: pre-wrap; background: #f0f0f0; padding: 10px; margin-top: 10px; border: 1px solid #ccc; }
-    </style>
+<meta charset="UTF-8">
+<title>Chat Parser</title>
+<style>
+  body { font-family: Arial, sans-serif; margin: 20px; }
+  input, textarea { width: 100%; margin-bottom: 10px; padding: 5px; }
+  #chatOutput { white-space: pre-wrap; background: #f0f0f0; padding: 10px; border: 1px solid #ccc; max-height: 400px; overflow-y: auto; }
+  button { padding: 10px 20px; margin-bottom: 10px; }
+  label { font-weight: bold; }
+</style>
 </head>
 <body>
-    <h1>Battle Mages Log Parser</h1>
 
-    <label>First player name: <input type="text" id="player1" value="Calypso"></label><br>
-    <label>Second player name: <input type="text" id="player2" value="Elyssa"></label><br>
-    <label>Paste HTML content here:</label><br>
-    <textarea id="htmlInput"></textarea><br>
-    <button id="parseBtn">Parse Logs</button>
+<label for="player1">Character 1 name:</label>
+<input type="text" id="player1" value="Player 1">
 
-    <h2>Parsed Output:</h2>
-    <div class="log-output" id="output"></div>
+<label for="player2">Character 2 name:</label>
+<input type="text" id="player2" value="Player 2">
+
+<label for="htmlInput">HTML text:</label>
+<textarea id="htmlInput" rows="15"></textarea>
+
+<button id="parseBtn">Show log</button>
+
+<label for="chatOutput">Result:</label>
+<div id="chatOutput"></div>
 
 <script>
-document.getElementById('parseBtn').addEventListener('click', () => {
-    const html = document.getElementById('htmlInput').value;
+function formatContent(contentSpan) {
+    const classes = contentSpan.classList;
+    const rawText = contentSpan.innerText.trim();
+
+    if (classes.contains("ooc")) return `(${rawText})`;
+    if (classes.contains("emote")) return `*${rawText}*`;
+
+    const parts = [];
+    contentSpan.childNodes.forEach(node => {
+        if (node.nodeType === Node.TEXT_NODE) {
+            const text = node.textContent.trim();
+            if (text) parts.push(text);
+        } else if (node.nodeType === Node.ELEMENT_NODE && node.tagName === "SPAN") {
+            const cls = node.classList;
+            const text = node.innerText.trim();
+            if (!text) return;
+            if (cls.contains("emote")) parts.push(`*${text}*`);
+            else if (cls.contains("ooc")) parts.push(`(${text})`);
+            else parts.push(text);
+        }
+    });
+    return parts.join(" ");
+}
+
+function parseChat(players, html) {
     const parser = new DOMParser();
-    const doc = parser.parseFromString(html, 'text/html');
+    const doc = parser.parseFromString(html, "text/html");
 
-    const player1 = document.getElementById('player1').value || 'Player1';
-    const player2 = document.getElementById('player2').value || 'Player2';
-    const players = [player1, player2];
+    const dialog = doc.querySelector("ul#dialog");
+    if (!dialog) return [];
 
-    const logs = [];
+    const chatBoxes = dialog.querySelectorAll("li.dialog_box.chat");
+    const messages = [];
 
-    doc.querySelectorAll('#dialog .dialog_box').forEach((dialogBox, idx) => {
-        const charName = players[idx % players.length];
+    chatBoxes.forEach((box, idx) => {
+        const name = idx < players.length ? players[idx] : `Player ${idx + 1}`;
+        const textField = box.querySelector("div.text_field");
+        if (!textField) return;
 
-        dialogBox.querySelectorAll('.log, .content.format').forEach(div => {
-            const timestamp = div.querySelector('.timestamp')?.textContent || '';
-            const parts = Array.from(div.childNodes).map(node => {
-                if (node.nodeType === Node.TEXT_NODE) {
-                    const text = node.textContent.trim();
-                    if (!text) return null;
-                    return { type: 'IC', text };
-                } else if (node.classList) {
-                    if (node.classList.contains('ooc')) return { type: 'OOC', text: node.textContent.trim() };
-                    if (node.classList.contains('emote')) return { type: 'EMOTE', text: node.textContent.trim() };
-                    return { type: 'IC', text: node.textContent.trim() };
-                } else {
-                    return { type: 'IC', text: node.textContent.trim() };
-                }
-            }).filter(Boolean);
+        Array.from(textField.children).forEach(row => {
+            const tsSpan = row.querySelector("span.timestamp");
+            const contentSpan = row.querySelector("span.content");
+            if (!tsSpan || !contentSpan) return;
 
-            parts.forEach(p => logs.push({
-                timestamp,
-                character: charName,
-                type: p.type,
-                text: p.text
-            }));
+            const timeStr = tsSpan.innerText.trim();
+            const [h, m, s] = timeStr.split(":").map(Number);
+            if (isNaN(h) || isNaN(m) || isNaN(s)) return;
+
+            const timeObj = new Date();
+            timeObj.setHours(h, m, s, 0);
+
+            const text = formatContent(contentSpan);
+            messages.push({ time: timeObj, line: `[${timeStr}] ${name}: ${text}` });
         });
     });
 
-    logs.sort((a, b) => {
-        if (!a.timestamp) return 1;
-        if (!b.timestamp) return -1;
-        return a.timestamp.localeCompare(b.timestamp);
-    });
+    messages.sort((a, b) => a.time - b.time);
+    return messages.map(m => m.line);
+}
 
-    const outputLines = logs.map(log => `${log.character} [${log.type}] ${log.timestamp} ${log.text}`);
-    document.getElementById('output').textContent = outputLines.join('\n');
+document.getElementById("parseBtn").addEventListener("click", () => {
+    const player1 = document.getElementById("player1").value.trim() || "Player 1";
+    const player2 = document.getElementById("player2").value.trim() || "Player 2";
+    const htmlInput = document.getElementById("htmlInput").value;
+
+    const lines = parseChat([player1, player2], htmlInput);
+    document.getElementById("chatOutput").textContent = lines.join("\n");
 });
 </script>
+
 </body>
 </html>
